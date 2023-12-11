@@ -84,4 +84,4 @@ def append_to_table(spark: SparkSession, table_name: str, values: DataFrame) -> 
     Append data to specified delta tables
     """
     table = DeltaTable.createIfNotExists(spark).tableName(table_name).addColumns(values.schema).execute()
-    table.merge(source=values, condition=F.lit(False)).whenNotMatchedInsertAll().execute()
+    table.merge(source=values, condition=F.expr("FALSE")).whenNotMatchedInsertAll().execute()
