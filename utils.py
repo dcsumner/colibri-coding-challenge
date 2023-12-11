@@ -10,14 +10,24 @@ from pyspark.sql.window import Window
 
 
 def load_csvs(spark: SparkSession, paths: List[str], schema: StructType) -> DataFrame:
+    """
+    Loads list of paths to CSV files and union into a single dataframe, applying schema on read
+    """
     return reduce(lambda df1, df2: df1.union(df2), [spark.read.csv(p, header=True, schema=schema) for p in paths])
 
 
 def filter_date(df: DataFrame, date: datetime) -> DataFrame:
+    """
+    Filter timestamp column on given date
+    """
     return df.where(F.to_date("timestamp") == F.to_date(F.lit(date)))
 
 
 def clean(df: DataFrame) -> DataFrame:
+    """
+    Replace outliers with null values. Outliers defined invalid values, i.e. below zero for wind speed & power output,
+    not in range 0, 360 for wind direction. Also defined as values above 99th percentile for wind speed and power output
+    """
     p99 = df.approxQuantile(["wind_speed", "power_output"], [0.99], 0.001)
     return (
         df.withColumn(
@@ -37,6 +47,11 @@ def clean(df: DataFrame) -> DataFrame:
 
 
 def impute(df: DataFrame) -> DataFrame:
+    """
+    Impute missing values, including nulls replacing outliers. Mean of prior and next values is used to impute for wind
+    speed and power output. This is not appropriate for wind_direction as mean could break down over [0, 360] boundary,
+    so we use max value instead
+    """
     window = Window.partitionBy("turbine_id").orderBy("timestamp").rowsBetween(-1, 1)
     return (
         df.withColumn("wind_speed", F.coalesce(F.col("wind_speed"), F.mean("wind_speed").over(window)))
@@ -46,6 +61,9 @@ def impute(df: DataFrame) -> DataFrame:
 
 
 def compute_summary_statistics(df: DataFrame) -> DataFrame:
+    """
+    Compute summary statistcs for each turbine for each day, and add an anomaly flag
+    """
     grouped = df.groupBy("turbine_id", F.date_trunc("day", "timestamp").alias("date")).agg(
         F.mean("power_output").alias("power_output_mean"),
         F.max("power_output").alias("power_output_max"),
@@ -62,5 +80,8 @@ def compute_summary_statistics(df: DataFrame) -> DataFrame:
 
 
 def append_to_table(spark: SparkSession, table_name: str, values: DataFrame) -> None:
+    """
+    Append data to specified delta tables
+    """
     table = DeltaTable.createIfNotExists(spark).tableName(table_name).addColumns(values.schema).execute()
     table.merge(source=values, condition=F.lit(False)).whenNotMatchedInsertAll().execute()

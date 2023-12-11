@@ -7,9 +7,11 @@ import utils
 
 
 def main():
-    spark = SparkSession.builder.getOrCreate()
+    # In a production setting these variables would be parametrised
     date = datetime(year=2022, month=3, day=1)
     paths = ["./Copy of data/data_group_1.csv", "./Copy of data/data_group_2.csv", "./Copy of data/data_group_3.csv"]
+    spark = SparkSession.builder.getOrCreate()
+
     schema = T.StructType(
         [
             T.StructField("timestamp", T.TimestampType(), False),
